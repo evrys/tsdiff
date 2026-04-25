@@ -13,6 +13,7 @@ export default defineConfig({
   sourcemap: true,
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   outputOptions: {
-    banner: (chunk) => (chunk.fileName === "cli.js" ? "#!/usr/bin/env node" : ""),
+    banner: (chunk) =>
+      chunk.fileName === "cli.js" ? "#!/usr/bin/env node" : "",
   },
 });

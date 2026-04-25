@@ -45,7 +45,12 @@ export function createDiffProgram(oldFile: string, newFile: string) {
     if (fileName === VIRTUAL_ROOT) {
       return ts.createSourceFile(fileName, rootText, languageVersion, true);
     }
-    return originalGetSourceFile(fileName, languageVersion, onError, shouldCreate);
+    return originalGetSourceFile(
+      fileName,
+      languageVersion,
+      onError,
+      shouldCreate,
+    );
   };
   host.readFile = (fileName) => {
     if (fileName === VIRTUAL_ROOT) return rootText;
@@ -86,13 +91,15 @@ function readNamespaces(root: ts.SourceFile, checker: ts.TypeChecker) {
   for (const stmt of root.statements) {
     if (!ts.isImportDeclaration(stmt)) continue;
     const clause = stmt.importClause;
-    if (!clause?.namedBindings || !ts.isNamespaceImport(clause.namedBindings)) continue;
+    if (!clause?.namedBindings || !ts.isNamespaceImport(clause.namedBindings))
+      continue;
     const name = clause.namedBindings.name;
     const sym = checker.getSymbolAtLocation(name);
     if (!sym) continue;
-    const aliased = (sym.flags & ts.SymbolFlags.Alias) !== 0
-      ? checker.getAliasedSymbol(sym)
-      : sym;
+    const aliased =
+      (sym.flags & ts.SymbolFlags.Alias) !== 0
+        ? checker.getAliasedSymbol(sym)
+        : sym;
     if (name.text === "__old") oldNs = aliased;
     else if (name.text === "__new") newNs = aliased;
   }

@@ -16,7 +16,7 @@ Options:
 `;
 
 async function main(argv: string[]): Promise<number> {
-  let parsed;
+  let parsed: ReturnType<typeof parseArgs>;
   try {
     parsed = parseArgs({
       args: argv,
@@ -45,7 +45,9 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (positionals.length !== 2) {
-    process.stderr.write(`tsdiff: expected exactly two file arguments\n\n${USAGE}`);
+    process.stderr.write(
+      `tsdiff: expected exactly two file arguments\n\n${USAGE}`,
+    );
     return 2;
   }
 
@@ -56,7 +58,7 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
-  let result;
+  let result: ReturnType<typeof diffDeclarations>;
   try {
     result = diffDeclarations(oldFile, newFile, { strict: !!values.strict });
   } catch (err) {
@@ -65,9 +67,9 @@ async function main(argv: string[]): Promise<number> {
   }
 
   if (format === "json") {
-    process.stdout.write(formatJson(result) + "\n");
+    process.stdout.write(`${formatJson(result)}\n`);
   } else {
-    process.stdout.write(formatHuman(result) + "\n");
+    process.stdout.write(`${formatHuman(result)}\n`);
   }
 
   if (result.breakingCount > 0 && !values["no-exit-code"]) return 1;
@@ -77,7 +79,9 @@ async function main(argv: string[]): Promise<number> {
 main(process.argv.slice(2)).then(
   (code) => process.exit(code),
   (err) => {
-    process.stderr.write(`tsdiff: unexpected error: ${(err as Error).stack ?? err}\n`);
+    process.stderr.write(
+      `tsdiff: unexpected error: ${(err as Error).stack ?? err}\n`,
+    );
     process.exit(1);
   },
 );

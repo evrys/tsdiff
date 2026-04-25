@@ -1,12 +1,12 @@
 import ts from "typescript";
 import { createDiffProgram } from "./program.js";
-import { extractSurface, isTypeKind, isValueKind, type ApiEntry } from "./extract.js";
+import {
+  extractSurface,
+  isTypeKind,
+  isValueKind,
+  type ApiEntry,
+} from "./extract.js";
 import type { Change, DiffOptions, DiffResult } from "./types.js";
-
-interface InternalChecker extends ts.TypeChecker {
-  isTypeAssignableTo?(source: ts.Type, target: ts.Type): boolean;
-  isTypeIdenticalTo?(source: ts.Type, target: ts.Type): boolean;
-}
 
 /**
  * Diff two TypeScript declaration files and return a list of API changes.
@@ -24,7 +24,6 @@ export function diffDeclarations(
   const newSurface = extractSurface(newNs, checker);
 
   const changes: Change[] = [];
-  const ick = checker as InternalChecker;
 
   for (const [name, oldEntry] of oldSurface) {
     const newEntry = newSurface.get(name);
@@ -38,7 +37,7 @@ export function diffDeclarations(
       });
       continue;
     }
-    compareEntry(name, oldEntry, newEntry, checker, ick, changes);
+    compareEntry(name, oldEntry, newEntry, checker, changes);
   }
 
   for (const [name, newEntry] of newSurface) {
@@ -60,7 +59,6 @@ function compareEntry(
   oldEntry: ApiEntry,
   newEntry: ApiEntry,
   checker: ts.TypeChecker,
-  ick: InternalChecker,
   changes: Change[],
 ): void {
   if (oldEntry.kind !== newEntry.kind) {
@@ -68,7 +66,9 @@ function compareEntry(
     // We still flag and let the type assignability check decide severity.
     changes.push({
       kind: "kind-changed",
-      severity: kindChangeBreaking(oldEntry.kind, newEntry.kind) ? "breaking" : "info",
+      severity: kindChangeBreaking(oldEntry.kind, newEntry.kind)
+        ? "breaking"
+        : "info",
       name,
       message: `Export \`${name}\` changed kind: ${oldEntry.kind} → ${newEntry.kind}`,
       details: { oldKind: oldEntry.kind, newKind: newEntry.kind },
@@ -80,7 +80,7 @@ function compareEntry(
     const oldType = typeOfSymbol(oldEntry.symbol, checker);
     const newType = typeOfSymbol(newEntry.symbol, checker);
     if (oldType && newType) {
-      compareTypes(name, oldType, newType, checker, ick, changes, "value");
+      compareTypes(name, oldType, newType, checker, changes, "value");
     }
   }
 
@@ -89,7 +89,7 @@ function compareEntry(
     const oldType = declaredTypeOfSymbol(oldEntry.symbol, checker);
     const newType = declaredTypeOfSymbol(newEntry.symbol, checker);
     if (oldType && newType) {
-      compareTypes(name, oldType, newType, checker, ick, changes, "type");
+      compareTypes(name, oldType, newType, checker, changes, "type");
     }
   }
 }
@@ -99,7 +99,6 @@ function compareTypes(
   oldType: ts.Type,
   newType: ts.Type,
   checker: ts.TypeChecker,
-  ick: InternalChecker,
   changes: Change[],
   space: "value" | "type",
 ): void {
@@ -109,10 +108,10 @@ function compareTypes(
   // For consumer compatibility: every value the new package produces of this
   // type must be acceptable wherever the old type was expected.
   // Equivalently: new must be assignable to old.
-  const newAssignableToOld = isAssignable(ick, newType, oldType);
+  const newAssignableToOld = isAssignable(checker, newType, oldType);
   // For type-space declarations (interfaces, aliases), consumers may both
   // construct and consume values of the type, so we also need the reverse.
-  const oldAssignableToNew = isAssignable(ick, oldType, newType);
+  const oldAssignableToNew = isAssignable(checker, oldType, newType);
 
   // Equivalent types in both directions and identical printed form: no change.
   if (newAssignableToOld && oldAssignableToNew && oldStr === newStr) return;
@@ -149,13 +148,19 @@ function compareTypes(
   }
 }
 
-function typeOfSymbol(sym: ts.Symbol, checker: ts.TypeChecker): ts.Type | undefined {
+function typeOfSymbol(
+  sym: ts.Symbol,
+  checker: ts.TypeChecker,
+): ts.Type | undefined {
   const decl = sym.valueDeclaration ?? sym.declarations?.[0];
   if (!decl) return undefined;
   return checker.getTypeOfSymbolAtLocation(sym, decl);
 }
 
-function declaredTypeOfSymbol(sym: ts.Symbol, checker: ts.TypeChecker): ts.Type | undefined {
+function declaredTypeOfSymbol(
+  sym: ts.Symbol,
+  checker: ts.TypeChecker,
+): ts.Type | undefined {
   try {
     return checker.getDeclaredTypeOfSymbol(sym);
   } catch {
@@ -188,30 +193,28 @@ function typeToString(checker: ts.TypeChecker, type: ts.Type): string {
   return `{ ${members} }`;
 }
 
-function isAssignable(ick: InternalChecker, source: ts.Type, target: ts.Type): boolean {
-  if (typeof ick.isTypeAssignableTo === "function") {
-    try {
-      return ick.isTypeAssignableTo(source, target);
-    } catch {
-      return false;
-    }
+function isAssignable(
+  checker: ts.TypeChecker,
+  source: ts.Type,
+  target: ts.Type,
+): boolean {
+  try {
+    return checker.isTypeAssignableTo(source, target);
+  } catch {
+    return false;
   }
-  // Fallback: identity check only.
-  if (typeof ick.isTypeIdenticalTo === "function") {
-    try {
-      return ick.isTypeIdenticalTo(source, target);
-    } catch {
-      return false;
-    }
-  }
-  return false;
 }
 
 function kindChangeBreaking(oldKind: string, newKind: string): boolean {
   // Class -> interface drops the constructor/value side: breaking.
   if (oldKind === "class" && newKind !== "class") return true;
   // Function -> non-callable variable / type: breaking for callers.
-  if (oldKind === "function" && newKind !== "function" && newKind !== "variable") return true;
+  if (
+    oldKind === "function" &&
+    newKind !== "function" &&
+    newKind !== "variable"
+  )
+    return true;
   // Interface <-> type-alias of equivalent shape will be confirmed by the
   // assignability comparison; treat the kind change itself as info.
   if (

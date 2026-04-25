@@ -27,7 +27,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "lint": "biome check --error-on-warnings .",
+    "format": "biome format . --write",
+    "prepublishOnly": "pnpm run build"
   },
   "keywords": [
     "typescript",
@@ -40,11 +42,13 @@
   "engines": {
     "node": ">=20"
   },
+  "packageManager": "pnpm@10.33.0",
   "dependencies": {
     "picocolors": "^1.1.1",
     "typescript": "^5.6.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.6",
     "@types/node": "^22.0.0",
     "tsdown": "^0.21.0",
     "vitest": "^2.1.0"

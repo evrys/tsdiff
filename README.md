@@ -9,10 +9,12 @@ Inspired by [oasdiff](https://github.com/Tufin/oasdiff) for OpenAPI specs — bu
 ## Install
 
 ```sh
-npm install -g tsdiff
+pnpm add -g tsdiff
 # or use without installing
-npx tsdiff <old.d.ts> <new.d.ts>
+pnpm dlx tsdiff <old.d.ts> <new.d.ts>
 ```
+
+(`npm` and `yarn` work too — `tsdiff` is a regular npm package.)
 
 ## Usage
 

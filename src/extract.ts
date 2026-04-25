@@ -23,10 +23,13 @@ export type ApiSurface = Map<string, ApiEntry>;
  * The namespace is an ES module's "*" export, so its `exports` table
  * mirrors the public API of the source file.
  */
-export function extractSurface(ns: ts.Symbol, checker: ts.TypeChecker): ApiSurface {
+export function extractSurface(
+  ns: ts.Symbol,
+  checker: ts.TypeChecker,
+): ApiSurface {
   const surface: ApiSurface = new Map();
   // For module namespace symbols, exports are exposed via the type's properties.
-  const type = checker.getTypeOfSymbolAtLocation(ns, ns.valueDeclaration ?? ns.declarations![0]!);
+  const type = checker.getTypeOfSymbolAtLocation(ns, declarationOf(ns));
   for (const prop of checker.getPropertiesOfType(type)) {
     surface.set(prop.name, {
       name: prop.name,
@@ -39,9 +42,10 @@ export function extractSurface(ns: ts.Symbol, checker: ts.TypeChecker): ApiSurfa
     const name = key as string;
     if (name === "default" || name === "__export") return;
     if (surface.has(name)) return;
-    const resolved = (sym.flags & ts.SymbolFlags.Alias) !== 0
-      ? checker.getAliasedSymbol(sym)
-      : sym;
+    const resolved =
+      (sym.flags & ts.SymbolFlags.Alias) !== 0
+        ? checker.getAliasedSymbol(sym)
+        : sym;
     surface.set(name, {
       name,
       symbol: resolved,
@@ -62,6 +66,14 @@ function classify(sym: ts.Symbol, _checker: ts.TypeChecker): ApiKind {
   if (f & ts.SymbolFlags.Module) return "namespace";
   if (f & ts.SymbolFlags.Method) return "function";
   return "unknown";
+}
+
+function declarationOf(sym: ts.Symbol): ts.Declaration {
+  const decl = sym.valueDeclaration ?? sym.declarations?.[0];
+  if (!decl) {
+    throw new Error(`Symbol \`${sym.name}\` has no declaration`);
+  }
+  return decl;
 }
 
 /** Categorize symbols for "value" vs "type" space. A name can occupy both. */
