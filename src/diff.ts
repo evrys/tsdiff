@@ -147,11 +147,13 @@ function compareTypes(
   let oldStr = typeToString(checker, oldType);
   let newStr = typeToString(checker, newType);
 
-  // When `typeToString` collapses to a bare alias reference (e.g.
-  // `FetchOptions<R>` vs `FetchOptions<R, T>`) the diff reader has no
-  // way to see *what* changed. Fall back to the declaration source text
-  // — that's what actually changed between versions.
-  if (isBareReference(oldStr) && isBareReference(newStr)) {
+  // When `typeToString` collapses to identical strings (e.g. both sides
+  // resolve to `LoDashStatic` or `typeof Help`) or to bare alias
+  // references whose generic args differ subtly, the diff reader has
+  // no way to see *what* changed. Fall back to the declaration source
+  // text — that's what actually changed between versions.
+  const stringsEqual = oldStr === newStr;
+  if (stringsEqual || (isBareReference(oldStr) && isBareReference(newStr))) {
     const oldDecl = declarationText(oldSymbol);
     const newDecl = declarationText(newSymbol);
     if (oldDecl && newDecl && oldDecl !== newDecl) {
@@ -175,12 +177,22 @@ function compareTypes(
   const oldAssignableToNew = isAssignable(checker, oldType, newType);
 
   // Structural breakdown ("which property/signature/type-param changed").
-  const differences = summarizeStructuralDiff(oldType, newType, checker);
-  const detailsBase = {
-    oldType: oldStr,
-    newType: newStr,
-    ...(differences.length ? { differences } : {}),
-  };
+  const differences = summarizeStructuralDiff(
+    oldType,
+    newType,
+    oldSymbol,
+    newSymbol,
+    checker,
+  );
+  // Only include `oldType`/`newType` in the user-visible details when they
+  // actually differ — emitting `old: X / new: X` (identical) is just noise
+  // and obscures the structural `differences` block.
+  const detailsBase: Change["details"] = {};
+  if (oldStr !== newStr) {
+    detailsBase.oldType = oldStr;
+    detailsBase.newType = newStr;
+  }
+  if (differences.length) detailsBase.differences = differences;
 
   // The TypeScript checker occasionally returns spurious negatives on
   // `isTypeAssignableTo` when the same generic interface appears in two
@@ -299,13 +311,15 @@ function isPurelyOptionalAddition(line: string): boolean {
 function summarizeStructuralDiff(
   oldType: ts.Type,
   newType: ts.Type,
+  oldSymbol: ts.Symbol,
+  newSymbol: ts.Symbol,
   checker: ts.TypeChecker,
 ): string[] {
   const out: string[] = [];
 
   // --- Type parameters (interfaces / aliases) ---
-  const oldParams = formatTypeParameters(oldType);
-  const newParams = formatTypeParameters(newType);
+  const oldParams = formatTypeParameters(oldType, oldSymbol);
+  const newParams = formatTypeParameters(newType, newSymbol);
   if (oldParams !== newParams && (oldParams || newParams)) {
     out.push(
       `~ type parameters: ${oldParams || "<none>"} → ${newParams || "<none>"}`,
@@ -419,20 +433,29 @@ function optMark(prop: ts.Symbol): string {
   return isOptional(prop) ? "?" : "";
 }
 
-function formatTypeParameters(type: ts.Type): string {
-  // Generic interfaces/aliases expose type parameters via the
+function formatTypeParameters(type: ts.Type, fallbackSym?: ts.Symbol): string {
+  // Generic interfaces / aliases expose type parameters via the
   // associated symbol's declarations; the structural Type API does
-  // not. Walk declarations of the symbol if present.
-  const sym = type.aliasSymbol ?? type.getSymbol();
-  if (!sym?.declarations) return "";
-  for (const decl of sym.declarations) {
-    const params = (
-      decl as ts.NamedDeclaration & {
-        typeParameters?: ts.NodeArray<ts.TypeParameterDeclaration>;
+  // not. Prefer the export's own symbol (which always carries the
+  // declaration) over the type's `aliasSymbol`/`symbol` — the latter
+  // can be lost when a type alias is reduced through an intersection
+  // (e.g. `type Simplify<T> = {[K in keyof T]: T[K]} & {}` loses its
+  // `aliasSymbol` and would otherwise report `<none>`).
+  const candidates: ts.Symbol[] = [];
+  if (fallbackSym) candidates.push(fallbackSym);
+  if (type.aliasSymbol) candidates.push(type.aliasSymbol);
+  const sym = type.getSymbol();
+  if (sym) candidates.push(sym);
+  for (const candidate of candidates) {
+    for (const decl of candidate.declarations ?? []) {
+      const params = (
+        decl as ts.NamedDeclaration & {
+          typeParameters?: ts.NodeArray<ts.TypeParameterDeclaration>;
+        }
+      ).typeParameters;
+      if (params?.length) {
+        return `<${params.map((p) => p.getText()).join(", ")}>`;
       }
-    ).typeParameters;
-    if (params?.length) {
-      return `<${params.map((p) => p.getText()).join(", ")}>`;
     }
   }
   return "";

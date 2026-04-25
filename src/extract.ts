@@ -55,16 +55,35 @@ export function extractSurface(
   return surface;
 }
 
-function classify(sym: ts.Symbol, _checker: ts.TypeChecker): ApiKind {
+function classify(sym: ts.Symbol, checker: ts.TypeChecker): ApiKind {
   const f = sym.flags;
-  if (f & ts.SymbolFlags.Function) return "function";
-  if (f & ts.SymbolFlags.Class) return "class";
-  if (f & ts.SymbolFlags.Interface) return "interface";
   if (f & ts.SymbolFlags.TypeAlias) return "type-alias";
+  if (f & ts.SymbolFlags.Interface) return "interface";
+  if (f & ts.SymbolFlags.Class) return "class";
   if (f & ts.SymbolFlags.Enum) return "enum";
-  if (f & ts.SymbolFlags.Variable) return "variable";
-  if (f & ts.SymbolFlags.Module) return "namespace";
+  if (f & ts.SymbolFlags.Function) return "function";
   if (f & ts.SymbolFlags.Method) return "function";
+  if (f & ts.SymbolFlags.Module) return "namespace";
+  // Properties / accessors / variables are all value-side. Disambiguate
+  // function-typed values via call signatures so e.g. `chalk.red`, which
+  // is exposed as a property of the default-exported object, is reported
+  // as a function rather than `unknown`.
+  const valueLike =
+    (f & ts.SymbolFlags.Variable) !== 0 ||
+    (f & ts.SymbolFlags.Property) !== 0 ||
+    (f & ts.SymbolFlags.Accessor) !== 0;
+  if (valueLike) {
+    const decl = sym.valueDeclaration ?? sym.declarations?.[0];
+    if (decl) {
+      try {
+        const t = checker.getTypeOfSymbolAtLocation(sym, decl);
+        if (t.getCallSignatures().length > 0) return "function";
+      } catch {
+        // Fall through to "variable".
+      }
+    }
+    return "variable";
+  }
   return "unknown";
 }
 
