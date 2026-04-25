@@ -80,6 +80,62 @@ const CASES: PackageCase[] = [
     warning: 0,
     info: 11,
   },
+  // Exercises the `@types/*` (DefinitelyTyped) fallback path: `react`
+  // itself ships no `.d.ts`, so the resolver pulls `@types/react` of
+  // the same version.
+  {
+    name: "react major bump (via @types/react)",
+    old: "react@17.0.2",
+    new: "react@18.0.0",
+    total: 109,
+    breaking: 89,
+    warning: 3,
+    info: 17,
+  },
+  // Larger CLI library with a mix of all three severities — useful as
+  // a regression case for the warning tier.
+  {
+    name: "commander major bump",
+    old: "commander@9.0.0",
+    new: "commander@10.0.0",
+    total: 10,
+    breaking: 4,
+    warning: 3,
+    info: 3,
+  },
+  // 0-breaking major bump dominated by potentially-breaking changes;
+  // useful to ensure the warning tier doesn't get folded into
+  // breaking.
+  {
+    name: "execa major bump",
+    old: "execa@7.0.0",
+    new: "execa@8.0.0",
+    total: 14,
+    breaking: 0,
+    warning: 6,
+    info: 8,
+  },
+  // CLI argument parser; clean breaking-major with no warnings.
+  {
+    name: "yargs major bump",
+    old: "yargs@16.0.0",
+    new: "yargs@17.0.0",
+    total: 9,
+    breaking: 6,
+    warning: 0,
+    info: 3,
+  },
+  // Tiny patch bump on a `@types`-only package (no scope), exercises
+  // the DT fallback for the most common naming case.
+  {
+    name: "lodash patch bump (via @types/lodash)",
+    old: "lodash@4.17.20",
+    new: "lodash@4.17.21",
+    total: 4,
+    breaking: 1,
+    warning: 0,
+    info: 3,
+  },
 ];
 
 const TYPE_STRING_BOUND = 4096;
