@@ -1,0 +1,4 @@
+{
+  "description": "adding a required interface field is breaking",
+  "breakingCount": 1
+}

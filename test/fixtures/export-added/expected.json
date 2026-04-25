@@ -1,0 +1,8 @@
+{
+  "description": "treats new exports as non-breaking",
+  "breakingCount": 0,
+  "nonBreakingCount": 1,
+  "changes": [
+    { "kind": "export-added", "severity": "non-breaking", "name": "mul" }
+  ]
+}

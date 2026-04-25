@@ -1,0 +1,4 @@
+{
+  "description": "narrowing a return type is non-breaking (callers still get a compatible value)",
+  "breakingCount": 0
+}

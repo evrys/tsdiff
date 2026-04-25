@@ -1,0 +1,7 @@
+{
+  "description": "narrowing a parameter is breaking",
+  "breakingCount": 1,
+  "changes": [
+    { "kind": "type-incompatible", "severity": "breaking", "name": "set" }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "description": "flags a required parameter added to a function as breaking",
+  "breakingCount": 1,
+  "changes": [
+    { "kind": "type-incompatible", "severity": "breaking", "name": "greet" }
+  ]
+}

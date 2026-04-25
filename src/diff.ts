@@ -1,11 +1,11 @@
 import ts from "typescript";
-import { createDiffProgram } from "./program.js";
 import {
   extractSurface,
   isTypeKind,
   isValueKind,
   type ApiEntry,
 } from "./extract.js";
+import { createDiffProgram } from "./program.js";
 import type { Change, DiffOptions, DiffResult } from "./types.js";
 
 /**

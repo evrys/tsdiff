@@ -1,0 +1,7 @@
+{
+  "description": "detects a removed export as breaking",
+  "breakingCount": 1,
+  "changes": [
+    { "kind": "export-removed", "severity": "breaking", "name": "sub" }
+  ]
+}

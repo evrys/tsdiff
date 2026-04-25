@@ -1,0 +1,4 @@
+{
+  "description": "function changing to a non-callable variable is a kind-change",
+  "changes": [{ "kind": "kind-changed", "name": "thing" }]
+}

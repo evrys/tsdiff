@@ -1,0 +1,4 @@
+{
+  "description": "widening a parameter is non-breaking (existing callers' values still accepted)",
+  "breakingCount": 0
+}

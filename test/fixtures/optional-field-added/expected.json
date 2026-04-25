@@ -1,0 +1,4 @@
+{
+  "description": "adding an optional interface field is non-breaking",
+  "breakingCount": 0
+}

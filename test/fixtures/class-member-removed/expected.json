@@ -1,0 +1,4 @@
+{
+  "description": "removing a class member is breaking",
+  "breakingCountAtLeast": 1
+}
