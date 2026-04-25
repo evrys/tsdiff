@@ -46,7 +46,8 @@
   "packageManager": "pnpm@10.33.0",
   "dependencies": {
     "@typescript/ata": "^0.9.8",
-    "picocolors": "^1.1.1",
+    "chalk": "^5.6.2",
+    "ora": "^9.4.0",
     "typescript": "^6.0.0"
   },
   "devDependencies": {

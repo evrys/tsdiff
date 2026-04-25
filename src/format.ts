@@ -1,4 +1,4 @@
-import pc from "picocolors";
+import chalk from "chalk";
 import type { Change, DiffResult, Severity } from "./types.js";
 
 export function formatHuman(result: DiffResult): string {
@@ -12,29 +12,29 @@ export function formatHuman(result: DiffResult): string {
 
   if (groups.breaking.length) {
     lines.push(
-      pc.bold(pc.red(`✖ ${groups.breaking.length} breaking change(s)`)),
+      chalk.bold.red(`✖ ${groups.breaking.length} breaking change(s)`),
     );
     for (const c of groups.breaking)
-      lines.push(`  ${pc.red("•")} ${c.message}${detail(c)}`);
+      lines.push(`  ${chalk.red("•")} ${c.message}${detail(c)}`);
   }
   if (groups.warning.length) {
     lines.push(
-      pc.bold(
-        pc.yellow(`⚠ ${groups.warning.length} potentially breaking change(s)`),
+      chalk.bold.yellow(
+        `⚠ ${groups.warning.length} potentially breaking change(s)`,
       ),
     );
     for (const c of groups.warning)
-      lines.push(`  ${pc.yellow("•")} ${c.message}${detail(c)}`);
+      lines.push(`  ${chalk.yellow("•")} ${c.message}${detail(c)}`);
   }
   if (groups.info.length) {
     lines.push(
-      pc.bold(pc.dim(`i ${groups.info.length} informational change(s)`)),
+      chalk.bold.dim(`i ${groups.info.length} informational change(s)`),
     );
     for (const c of groups.info)
-      lines.push(`  ${pc.dim("•")} ${c.message}${detail(c)}`);
+      lines.push(`  ${chalk.dim("•")} ${c.message}${detail(c)}`);
   }
   if (result.changes.length === 0) {
-    lines.push(pc.green("No API changes detected."));
+    lines.push(chalk.green("No API changes detected."));
   }
   return lines.join("\n");
 }
@@ -44,25 +44,25 @@ function detail(c: Change): string {
   const { oldType, newType, differences } = c.details;
   const parts: string[] = [];
   if (differences?.length) {
-    parts.push("\n      " + pc.bold(pc.dim("changes:")));
+    parts.push("\n      " + chalk.bold.dim("changes:"));
     for (const line of differences) {
       const colored = line.startsWith("+ ")
-        ? pc.green(line)
+        ? chalk.green(line)
         : line.startsWith("- ")
-          ? pc.red(line)
+          ? chalk.red(line)
           : line.startsWith("~ ")
-            ? pc.yellow(line)
-            : pc.dim(line);
+            ? chalk.yellow(line)
+            : chalk.dim(line);
       parts.push("\n        " + colored);
     }
   }
   if (oldType && newType) {
     parts.push(
       "\n      " +
-        pc.dim("old: ") +
+        chalk.dim("old: ") +
         oldType +
         "\n      " +
-        pc.dim("new: ") +
+        chalk.dim("new: ") +
         newType,
     );
   }

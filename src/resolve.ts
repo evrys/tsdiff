@@ -14,6 +14,26 @@ export interface ResolvedInput {
 }
 
 /**
+ * Optional progress hook used to drive a spinner / progress UI in the CLI.
+ * All methods are optional; resolveInput remains usable from library code
+ * without supplying any reporter.
+ */
+export interface ProgressReporter {
+  /** Called when a high-level step starts (e.g. "acquiring types for X"). */
+  start?: (message: string) => void;
+  /** Called when the active step's label should change. */
+  update?: (message: string) => void;
+  /** Called when downloads progress (downloaded/total file counts). */
+  progress?: (downloaded: number, total: number) => void;
+  /** Called when the step succeeds. */
+  succeed?: (message: string) => void;
+  /** Called when the step fails. */
+  fail?: (message: string) => void;
+  /** Called for incidental info that shouldn't replace the active step. */
+  info?: (message: string) => void;
+}
+
+/**
  * Resolve a CLI input to a `.d.ts` file path.
  *
  * Inputs may be:
@@ -26,7 +46,10 @@ export interface ResolvedInput {
  * into a temporary `node_modules` tree so the TS compiler can resolve
  * bare imports like `react` or `@emotion/react` naturally.
  */
-export async function resolveInput(input: string): Promise<ResolvedInput> {
+export async function resolveInput(
+  input: string,
+  reporter: ProgressReporter = {},
+): Promise<ResolvedInput> {
   if (looksLikeFilePath(input)) {
     const abs = path.resolve(input);
     if (!fs.existsSync(abs)) {
@@ -34,7 +57,7 @@ export async function resolveInput(input: string): Promise<ResolvedInput> {
     }
     return { dtsPath: abs, label: input, cleanup: () => {} };
   }
-  return resolveNpmSpec(input);
+  return resolveNpmSpec(input, reporter);
 }
 
 function looksLikeFilePath(s: string): boolean {
@@ -44,11 +67,12 @@ function looksLikeFilePath(s: string): boolean {
   return false;
 }
 
-async function resolveNpmSpec(spec: string): Promise<ResolvedInput> {
+async function resolveNpmSpec(
+  spec: string,
+  reporter: ProgressReporter,
+): Promise<ResolvedInput> {
   const { name, versionOrTag } = parseSpec(spec);
-  process.stderr.write(
-    `tsdiff: acquiring types for ${name}@${versionOrTag} ...\n`,
-  );
+  reporter.start?.(`Acquiring types for ${name}@${versionOrTag}`);
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tsdiff-pkg-"));
   const cleanup = () => {
@@ -60,7 +84,7 @@ async function resolveNpmSpec(spec: string): Promise<ResolvedInput> {
   };
 
   try {
-    await runAta(name, versionOrTag, tmpDir);
+    await runAta(name, versionOrTag, tmpDir, reporter);
 
     const pkgDir = path.join(tmpDir, "node_modules", ...name.split("/"));
     const pkgJsonPath = path.join(pkgDir, "package.json");
@@ -82,6 +106,7 @@ async function resolveNpmSpec(spec: string): Promise<ResolvedInput> {
       : findFallbackEntry(pkgDir);
 
     if (entryPath && fs.existsSync(entryPath)) {
+      reporter.succeed?.(`Resolved ${name}@${installedVersion}`);
       return {
         dtsPath: entryPath,
         label: `${name}@${installedVersion}`,
@@ -92,11 +117,19 @@ async function resolveNpmSpec(spec: string): Promise<ResolvedInput> {
     // Fall back to DefinitelyTyped (`@types/<name>`). The DT naming convention
     // for scoped packages flattens the slash: `@scope/foo` → `@types/scope__foo`.
     const dtName = definitelyTypedName(name);
-    process.stderr.write(
-      `tsdiff: ${name}@${installedVersion} ships no declarations; trying ${dtName}@${versionOrTag} ...\n`,
+    reporter.update?.(
+      `${name}@${installedVersion} ships no declarations; trying ${dtName}`,
     );
-    const dtResolved = await tryResolveDtPackage(dtName, versionOrTag, tmpDir);
+    const dtResolved = await tryResolveDtPackage(
+      dtName,
+      versionOrTag,
+      tmpDir,
+      reporter,
+    );
     if (dtResolved) {
+      reporter.succeed?.(
+        `Resolved ${dtName}@${dtResolved.version} (for ${name}@${installedVersion})`,
+      );
       return {
         dtsPath: dtResolved.entryPath,
         label: `${dtName}@${dtResolved.version} (for ${name}@${installedVersion})`,
@@ -110,6 +143,7 @@ async function resolveNpmSpec(spec: string): Promise<ResolvedInput> {
         `${dtName}@${versionOrTag} on DefinitelyTyped.`,
     );
   } catch (err) {
+    reporter.fail?.((err as Error).message);
     cleanup();
     throw err;
   }
@@ -119,6 +153,7 @@ async function runAta(
   name: string,
   versionOrTag: string,
   tmpDir: string,
+  reporter: ProgressReporter,
 ): Promise<void> {
   let downloads = 0;
   const errors: Error[] = [];
@@ -138,16 +173,12 @@ async function runAta(
         downloads++;
       },
       progress: (downloaded, total) => {
-        process.stderr.write(
-          `tsdiff: downloaded ${downloaded}/${total} files\r`,
-        );
+        reporter.progress?.(downloaded, total);
       },
       errorMessage: (msg, err) => {
         errors.push(new Error(`${msg}: ${err.message}`));
       },
-      finished: () => {
-        process.stderr.write(`tsdiff: downloaded ${downloads} files       \n`);
-      },
+      finished: () => {},
     },
   });
 
@@ -200,13 +231,14 @@ async function tryResolveDtPackage(
   dtName: string,
   versionOrTag: string,
   tmpDir: string,
+  reporter: ProgressReporter,
 ): Promise<{ entryPath: string; version: string } | undefined> {
   const candidates = dtVersionCandidates(versionOrTag);
   const dtPkgDir = path.join(tmpDir, "node_modules", ...dtName.split("/"));
 
   for (const candidate of candidates) {
     try {
-      await runAta(dtName, candidate, tmpDir);
+      await runAta(dtName, candidate, tmpDir, reporter);
     } catch {
       continue;
     }

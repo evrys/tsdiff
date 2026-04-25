@@ -1,7 +1,9 @@
+import chalk from "chalk";
 import { parseArgs } from "node:util";
+import ora, { type Ora } from "ora";
 import { diffDeclarations } from "./diff.js";
 import { formatHuman, formatJson } from "./format.js";
-import { resolveInput } from "./resolve.js";
+import { type ProgressReporter, resolveInput } from "./resolve.js";
 
 const USAGE = `tsdiff — detect breaking changes between two TypeScript APIs
 
@@ -74,29 +76,42 @@ async function main(argv: string[]): Promise<number> {
 
   let oldResolved: Awaited<ReturnType<typeof resolveInput>>;
   let newResolved: Awaited<ReturnType<typeof resolveInput>>;
+  const useSpinner = format === "human" && process.stderr.isTTY === true;
   try {
-    oldResolved = await resolveInput(oldArg);
+    oldResolved = await resolveInput(oldArg, makeReporter(useSpinner));
     try {
-      newResolved = await resolveInput(newArg);
+      newResolved = await resolveInput(newArg, makeReporter(useSpinner));
     } catch (err) {
       oldResolved.cleanup();
       throw err;
     }
   } catch (err) {
-    process.stderr.write(`tsdiff: ${(err as Error).message}\n`);
+    process.stderr.write(`${chalk.red("✖")} ${(err as Error).message}\n`);
     return 1;
   }
 
   let result: ReturnType<typeof diffDeclarations>;
+  const diffSpinner = useSpinner
+    ? ora({
+        text: `Comparing ${oldResolved.label} → ${newResolved.label}`,
+        stream: process.stderr,
+      }).start()
+    : null;
+  if (!diffSpinner && format === "human") {
+    process.stderr.write(
+      `${chalk.dim("·")} Comparing ${oldResolved.label} → ${newResolved.label}\n`,
+    );
+  }
   try {
-    if (format === "human") {
-      process.stderr.write(
-        `tsdiff: comparing ${oldResolved.label} → ${newResolved.label}\n`,
-      );
-    }
     result = diffDeclarations(oldResolved.dtsPath, newResolved.dtsPath);
+    diffSpinner?.succeed(
+      `Compared ${oldResolved.label} → ${newResolved.label}`,
+    );
   } catch (err) {
-    process.stderr.write(`tsdiff: ${(err as Error).message}\n`);
+    diffSpinner?.fail((err as Error).message);
+    process.stderr.write(`${chalk.red("✖")} ${(err as Error).message}\n`);
+    oldResolved.cleanup();
+    newResolved.cleanup();
     return 1;
   } finally {
     oldResolved.cleanup();
@@ -119,8 +134,50 @@ main(process.argv.slice(2)).then(
   (code) => process.exit(code),
   (err) => {
     process.stderr.write(
-      `tsdiff: unexpected error: ${(err as Error).stack ?? err}\n`,
+      `${chalk.red("✖")} unexpected error: ${(err as Error).stack ?? err}\n`,
     );
     process.exit(1);
   },
 );
+
+function makeReporter(useSpinner: boolean): ProgressReporter {
+  if (!useSpinner) {
+    return {
+      start: (m) => process.stderr.write(`${chalk.dim("·")} ${m}\n`),
+      succeed: (m) => process.stderr.write(`${chalk.green("✓")} ${m}\n`),
+      info: (m) => process.stderr.write(`${chalk.dim("·")} ${m}\n`),
+    };
+  }
+
+  let spinner: Ora | null = null;
+  let baseText = "";
+  return {
+    start: (m) => {
+      baseText = m;
+      spinner = ora({ text: m, stream: process.stderr }).start();
+    },
+    update: (m) => {
+      baseText = m;
+      if (spinner) spinner.text = m;
+    },
+    progress: (downloaded, total) => {
+      if (spinner) {
+        spinner.text = `${baseText} ${chalk.dim(`(${downloaded}/${total} files)`)}`;
+      }
+    },
+    succeed: (m) => {
+      spinner?.succeed(m);
+      spinner = null;
+    },
+    fail: () => {
+      // Don't print here; let the CLI's catch handler render the error
+      // uniformly. We just stop the spinner so it doesn't linger.
+      spinner?.stop();
+      spinner = null;
+    },
+    info: (m) => {
+      spinner?.info(m);
+      spinner = null;
+    },
+  };
+}
