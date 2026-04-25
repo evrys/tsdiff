@@ -91,14 +91,6 @@ you can call `diffDeclarations(oldPath, newPath)` directly.
 - Class member changes
 - Cross-cutting type assignability via the TypeScript checker
 
-## What it does not (yet) detect
-
-- JSDoc `@deprecated` tracking
-- Suggesting a SemVer bump
-- Markdown / GitHub Actions output
-
-PRs welcome.
-
 ## How it works
 
 1. Inputs are resolved to `.d.ts` files. npm specifiers are fetched through
