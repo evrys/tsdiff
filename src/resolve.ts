@@ -81,18 +81,34 @@ async function resolveNpmSpec(spec: string): Promise<ResolvedInput> {
       ? path.join(pkgDir, normalizePath(entry))
       : findFallbackEntry(pkgDir);
 
-    if (!entryPath || !fs.existsSync(entryPath)) {
-      throw new Error(
-        `No TypeScript declarations found for ${name}@${installedVersion}. ` +
-          `Looked for "types"/"typings" / exports[".types"] in package.json.`,
-      );
+    if (entryPath && fs.existsSync(entryPath)) {
+      return {
+        dtsPath: entryPath,
+        label: `${name}@${installedVersion}`,
+        cleanup,
+      };
     }
 
-    return {
-      dtsPath: entryPath,
-      label: `${name}@${installedVersion}`,
-      cleanup,
-    };
+    // Fall back to DefinitelyTyped (`@types/<name>`). The DT naming convention
+    // for scoped packages flattens the slash: `@scope/foo` → `@types/scope__foo`.
+    const dtName = definitelyTypedName(name);
+    process.stderr.write(
+      `tsdiff: ${name}@${installedVersion} ships no declarations; trying ${dtName}@${versionOrTag} ...\n`,
+    );
+    const dtResolved = await tryResolveDtPackage(dtName, versionOrTag, tmpDir);
+    if (dtResolved) {
+      return {
+        dtsPath: dtResolved.entryPath,
+        label: `${dtName}@${dtResolved.version} (for ${name}@${installedVersion})`,
+        cleanup,
+      };
+    }
+
+    throw new Error(
+      `No TypeScript declarations found for ${name}@${installedVersion}. ` +
+        `Tried "types"/"typings" / exports[".types"] in package.json and ` +
+        `${dtName}@${versionOrTag} on DefinitelyTyped.`,
+    );
   } catch (err) {
     cleanup();
     throw err;
@@ -155,6 +171,73 @@ function findFallbackEntry(pkgDir: string): string | undefined {
     if (fs.existsSync(p)) return p;
   }
   return undefined;
+}
+
+/**
+ * Map an npm package name to its DefinitelyTyped (`@types/*`) counterpart.
+ * Scoped packages flatten the slash: `@scope/foo` → `@types/scope__foo`.
+ */
+function definitelyTypedName(name: string): string {
+  if (name.startsWith("@types/")) return name;
+  if (name.startsWith("@")) {
+    const slash = name.indexOf("/");
+    if (slash !== -1) {
+      const scope = name.slice(1, slash);
+      const rest = name.slice(slash + 1);
+      return `@types/${scope}__${rest}`;
+    }
+  }
+  return `@types/${name}`;
+}
+
+/**
+ * Attempt to download a DefinitelyTyped package and locate its entry point.
+ * Tries the requested version pin first, then progressively looser fallbacks
+ * (major-only, then `latest`) since `@types/*` versions don't always match
+ * the upstream package version exactly.
+ */
+async function tryResolveDtPackage(
+  dtName: string,
+  versionOrTag: string,
+  tmpDir: string,
+): Promise<{ entryPath: string; version: string } | undefined> {
+  const candidates = dtVersionCandidates(versionOrTag);
+  const dtPkgDir = path.join(tmpDir, "node_modules", ...dtName.split("/"));
+
+  for (const candidate of candidates) {
+    try {
+      await runAta(dtName, candidate, tmpDir);
+    } catch {
+      continue;
+    }
+
+    const pkgJsonPath = path.join(dtPkgDir, "package.json");
+    if (!fs.existsSync(pkgJsonPath)) continue;
+    const pkg = JSON.parse(
+      fs.readFileSync(pkgJsonPath, "utf8"),
+    ) as PackageJsonLike;
+    const installedVersion =
+      typeof pkg.version === "string" ? pkg.version : candidate;
+
+    const entry = pickTypesEntry(pkg);
+    const entryPath = entry
+      ? path.join(dtPkgDir, normalizePath(entry))
+      : findFallbackEntry(dtPkgDir);
+    if (entryPath && fs.existsSync(entryPath)) {
+      return { entryPath, version: installedVersion };
+    }
+  }
+  return undefined;
+}
+
+function dtVersionCandidates(versionOrTag: string): string[] {
+  const out = [versionOrTag];
+  // If we got something like "17.0.2", also try the major ("17") since
+  // @types versions track major-version compatibility, not exact versions.
+  const major = /^\d+/.exec(versionOrTag)?.[0];
+  if (major && major !== versionOrTag) out.push(major);
+  if (!out.includes("latest")) out.push("latest");
+  return out;
 }
 
 function silentLogger(): {
