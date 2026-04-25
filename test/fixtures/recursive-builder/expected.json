@@ -1,0 +1,4 @@
+{
+  "description": "diffs a zod-style chained builder API without exploding type-string size",
+  "breakingCountAtLeast": 0
+}

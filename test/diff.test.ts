@@ -73,3 +73,37 @@ describe("diffDeclarations (fixtures)", () => {
     });
   }
 });
+
+// Regression test for the unbounded `typeToString` expansion in src/diff.ts.
+// On chained-builder APIs (zod, mui, ...), `typeToString` produces megabytes
+// of structural fingerprint per change, blowing up wall-clock time and heap.
+// The recursive-builder fixture is a reduced repro: a single added method on
+// a self-referential generic interface currently emits ~4.5 KB of redundant
+// text per change (extrapolating to 100+ KB on real zod and OOM on
+// @mui/material at the default Node heap).
+//
+// Marked `.fails` because the bug is currently present; remove the `.fails`
+// when fixing diff.ts (e.g. by capping fingerprint depth/size, sharing a
+// type-string memoization cache, or short-circuiting on identical Type ids).
+describe("regression: chained-builder type-string size", () => {
+  const dir = join(FIXTURES_DIR, "recursive-builder");
+
+  it.fails("produces compact type-strings", () => {
+    const result = diffDeclarations(
+      join(dir, "old.d.ts"),
+      join(dir, "new.d.ts"),
+    );
+
+    // Each per-change `details.oldType` / `details.newType` should be
+    // bounded; today the worst case is ~4.5 KB on this 70-line fixture.
+    const SIZE_BOUND = 1500;
+    for (const c of result.changes) {
+      const oldLen = String(c.details?.oldType ?? "").length;
+      const newLen = String(c.details?.newType ?? "").length;
+      expect(
+        Math.max(oldLen, newLen),
+        `change \`${c.name}\` has oversized type-string (old=${oldLen}, new=${newLen})`,
+      ).toBeLessThan(SIZE_BOUND);
+    }
+  });
+});
