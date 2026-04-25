@@ -15,7 +15,6 @@ types entry.
 
 Options:
   --format <human|json>   Output format (default: human)
-  --strict                Treat new exports as info instead of non-breaking
   --no-exit-code          Do not exit with a non-zero status on breaking changes
   -h, --help              Show this help
   -v, --version           Show version
@@ -34,7 +33,6 @@ async function main(argv: string[]): Promise<number> {
       allowPositionals: true,
       options: {
         format: { type: "string", default: "human" },
-        strict: { type: "boolean", default: false },
         "no-exit-code": { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
         version: { type: "boolean", short: "v", default: false },
@@ -89,9 +87,7 @@ async function main(argv: string[]): Promise<number> {
         `tsdiff: comparing ${oldResolved.label} → ${newResolved.label}\n`,
       );
     }
-    result = diffDeclarations(oldResolved.dtsPath, newResolved.dtsPath, {
-      strict: !!values.strict,
-    });
+    result = diffDeclarations(oldResolved.dtsPath, newResolved.dtsPath);
   } catch (err) {
     process.stderr.write(`tsdiff: ${(err as Error).message}\n`);
     return 1;

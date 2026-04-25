@@ -29,7 +29,6 @@ Exits with a non-zero status when at least one breaking change is detected, so i
 | Flag | Description |
 | --- | --- |
 | `--format <human\|json>` | Output format. Default: `human`. |
-| `--strict` | Treat newly added exports as `info` instead of `non-breaking`. |
 | `--no-exit-code` | Always exit with status 0, even when breaking changes are found. |
 
 ### Example
@@ -59,7 +58,7 @@ if (result.breakingCount > 0) process.exit(1);
 ## What it detects
 
 - Removed exports (breaking)
-- Added exports (non-breaking, or info under `--strict`)
+- Added exports (non-breaking)
 - Kind changes (e.g. `function` → `variable`)
 - Function signature changes — new required parameters, narrowed parameter types, widened return types
 - Interface / type-alias shape changes — new required fields, removed fields, narrowed unions

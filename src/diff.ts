@@ -6,7 +6,7 @@ import {
   type ApiEntry,
 } from "./extract.js";
 import { createDiffProgram } from "./program.js";
-import type { Change, DiffOptions, DiffResult } from "./types.js";
+import type { Change, DiffResult } from "./types.js";
 
 /**
  * Diff two TypeScript declaration files and return a list of API changes.
@@ -14,11 +14,7 @@ import type { Change, DiffOptions, DiffResult } from "./types.js";
  * @param oldFile  Path to the previous `.d.ts` (baseline).
  * @param newFile  Path to the new `.d.ts`.
  */
-export function diffDeclarations(
-  oldFile: string,
-  newFile: string,
-  options: DiffOptions = {},
-): DiffResult {
+export function diffDeclarations(oldFile: string, newFile: string): DiffResult {
   const { checker, oldNs, newNs } = createDiffProgram(oldFile, newFile);
   const oldSurface = extractSurface(oldNs, checker);
   const newSurface = extractSurface(newNs, checker);
@@ -44,7 +40,7 @@ export function diffDeclarations(
     if (oldSurface.has(name)) continue;
     changes.push({
       kind: "export-added",
-      severity: options.strict ? "info" : "non-breaking",
+      severity: "non-breaking",
       name,
       message: `Export \`${name}\` (${newEntry.kind}) was added`,
       details: { newKind: newEntry.kind },

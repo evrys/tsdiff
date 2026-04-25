@@ -26,8 +26,3 @@ export interface DiffResult {
   nonBreakingCount: number;
   infoCount: number;
 }
-
-export interface DiffOptions {
-  /** Treat additions as info instead of non-breaking. */
-  strict?: boolean;
-}

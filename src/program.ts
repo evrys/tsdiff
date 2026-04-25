@@ -1,6 +1,6 @@
-import ts from "typescript";
-import * as path from "node:path";
 import * as fs from "node:fs";
+import * as path from "node:path";
+import ts from "typescript";
 
 const VIRTUAL_ROOT = "/__tsdiff__/__root__.ts";
 

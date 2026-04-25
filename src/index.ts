@@ -5,7 +5,6 @@ export type { ResolvedInput } from "./resolve.js";
 export type {
   Change,
   ChangeKind,
-  DiffOptions,
   DiffResult,
   Severity,
 } from "./types.js";
