@@ -5,7 +5,7 @@ export function formatHuman(result: DiffResult): string {
   const lines: string[] = [];
   const groups: Record<Severity, Change[]> = {
     breaking: [],
-    "non-breaking": [],
+    warning: [],
     info: [],
   };
   for (const c of result.changes) groups[c.severity].push(c);
@@ -17,13 +17,13 @@ export function formatHuman(result: DiffResult): string {
     for (const c of groups.breaking)
       lines.push(`  ${pc.red("•")} ${c.message}${detail(c)}`);
   }
-  if (groups["non-breaking"].length) {
+  if (groups.warning.length) {
     lines.push(
       pc.bold(
-        pc.yellow(`+ ${groups["non-breaking"].length} non-breaking change(s)`),
+        pc.yellow(`⚠ ${groups.warning.length} potentially breaking change(s)`),
       ),
     );
-    for (const c of groups["non-breaking"])
+    for (const c of groups.warning)
       lines.push(`  ${pc.yellow("•")} ${c.message}${detail(c)}`);
   }
   if (groups.info.length) {
@@ -41,18 +41,32 @@ export function formatHuman(result: DiffResult): string {
 
 function detail(c: Change): string {
   if (!c.details) return "";
-  const { oldType, newType } = c.details;
+  const { oldType, newType, differences } = c.details;
+  const parts: string[] = [];
+  if (differences?.length) {
+    parts.push("\n      " + pc.bold(pc.dim("changes:")));
+    for (const line of differences) {
+      const colored = line.startsWith("+ ")
+        ? pc.green(line)
+        : line.startsWith("- ")
+          ? pc.red(line)
+          : line.startsWith("~ ")
+            ? pc.yellow(line)
+            : pc.dim(line);
+      parts.push("\n        " + colored);
+    }
+  }
   if (oldType && newType) {
-    return (
+    parts.push(
       "\n      " +
-      pc.dim("old: ") +
-      oldType +
-      "\n      " +
-      pc.dim("new: ") +
-      newType
+        pc.dim("old: ") +
+        oldType +
+        "\n      " +
+        pc.dim("new: ") +
+        newType,
     );
   }
-  return "";
+  return parts.join("");
 }
 
 export function formatJson(result: DiffResult): string {

@@ -1,4 +1,5 @@
 {
-  "description": "optional -> required is breaking for producers (existing producers may omit the field)",
-  "breakingCountAtLeast": 1
+  "description": "optional -> required is a potential break (warning) — existing producers may omit the field",
+  "breakingCount": 0,
+  "warningCountAtLeast": 1
 }

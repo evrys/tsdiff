@@ -1,4 +1,5 @@
 {
-  "description": "adding a required interface field is breaking",
-  "breakingCount": 1
+  "description": "adding a required interface field is a potential break (warning) — only producers (implementers) are affected",
+  "breakingCount": 0,
+  "warningCount": 1
 }

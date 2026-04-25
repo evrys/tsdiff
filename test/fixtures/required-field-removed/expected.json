@@ -1,4 +1,5 @@
 {
-  "description": "removing a field is breaking for consumers reading it",
-  "breakingCountAtLeast": 1
+  "description": "removing a field is a potential break (warning) — only consumers reading the field are affected",
+  "breakingCount": 0,
+  "warningCountAtLeast": 1
 }

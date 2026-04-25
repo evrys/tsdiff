@@ -1,8 +1,8 @@
 {
-  "description": "treats new exports as non-breaking",
+  "description": "treats new exports as informational",
   "breakingCount": 0,
-  "nonBreakingCount": 1,
+  "infoCount": 1,
   "changes": [
-    { "kind": "export-added", "severity": "non-breaking", "name": "mul" }
+    { "kind": "export-added", "severity": "info", "name": "mul" }
   ]
 }

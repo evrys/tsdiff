@@ -40,7 +40,7 @@ export function diffDeclarations(oldFile: string, newFile: string): DiffResult {
     if (oldSurface.has(name)) continue;
     changes.push({
       kind: "export-added",
-      severity: "non-breaking",
+      severity: "info",
       name,
       message: `Export \`${name}\` (${newEntry.kind}) was added`,
       details: { newKind: newEntry.kind },
@@ -85,7 +85,16 @@ function compareEntry(
     const oldType = typeOfSymbol(oldEntry.symbol, checker);
     const newType = typeOfSymbol(newEntry.symbol, checker);
     if (oldType && newType) {
-      compareTypes(name, oldType, newType, checker, changes, "value");
+      compareTypes(
+        name,
+        oldType,
+        newType,
+        oldEntry.symbol,
+        newEntry.symbol,
+        checker,
+        changes,
+        "value",
+      );
     }
   }
 
@@ -94,7 +103,16 @@ function compareEntry(
     const oldType = declaredTypeOfSymbol(oldEntry.symbol, checker);
     const newType = declaredTypeOfSymbol(newEntry.symbol, checker);
     if (oldType && newType) {
-      compareTypes(name, oldType, newType, checker, changes, "type");
+      compareTypes(
+        name,
+        oldType,
+        newType,
+        oldEntry.symbol,
+        newEntry.symbol,
+        checker,
+        changes,
+        "type",
+      );
     }
   }
 }
@@ -116,6 +134,8 @@ function compareTypes(
   name: string,
   oldType: ts.Type,
   newType: ts.Type,
+  oldSymbol: ts.Symbol,
+  newSymbol: ts.Symbol,
   checker: ts.TypeChecker,
   changes: Change[],
   space: "value" | "type",
@@ -124,37 +144,102 @@ function compareTypes(
   // `declarationsTextEqual` in the caller, so by the time we get here the
   // types differ in source. The strings below are for human-readable
   // change messages; the actual diff is decided by `isTypeAssignableTo`.
-  const oldStr = typeToString(checker, oldType);
-  const newStr = typeToString(checker, newType);
+  let oldStr = typeToString(checker, oldType);
+  let newStr = typeToString(checker, newType);
 
-  // For consumer compatibility: every value the new package produces of this
-  // type must be acceptable wherever the old type was expected.
-  // Equivalently: new must be assignable to old.
+  // When `typeToString` collapses to a bare alias reference (e.g.
+  // `FetchOptions<R>` vs `FetchOptions<R, T>`) the diff reader has no
+  // way to see *what* changed. Fall back to the declaration source text
+  // — that's what actually changed between versions.
+  if (isBareReference(oldStr) && isBareReference(newStr)) {
+    const oldDecl = declarationText(oldSymbol);
+    const newDecl = declarationText(newSymbol);
+    if (oldDecl && newDecl && oldDecl !== newDecl) {
+      oldStr = oldDecl;
+      newStr = newDecl;
+    }
+  }
+
+  // Direction A: is `new` still a *subtype* of `old`?
+  //   true  => every value produced under the new declaration still fits
+  //            the old declaration's contract.
+  //   false => the new declaration dropped or changed something the old one
+  //            guaranteed; consumers that *read* this type may break
+  //            ("widened or diverged").
   const newAssignableToOld = isAssignable(checker, newType, oldType);
-  // For type-space declarations (interfaces, aliases), consumers may both
-  // construct and consume values of the type, so we also need the reverse.
+  // Direction B (type-space only): is `old` still a subtype of `new`?
+  //   true  => values that satisfied the old declaration still satisfy the
+  //            new one.
+  //   false => the new declaration is stricter; consumers that *construct*
+  //            values of this type may break ("narrowed").
   const oldAssignableToNew = isAssignable(checker, oldType, newType);
 
-  if (!newAssignableToOld) {
+  // Structural breakdown ("which property/signature/type-param changed").
+  const differences = summarizeStructuralDiff(oldType, newType, checker);
+  const detailsBase = {
+    oldType: oldStr,
+    newType: newStr,
+    ...(differences.length ? { differences } : {}),
+  };
+
+  // The TypeScript checker occasionally returns spurious negatives on
+  // `isTypeAssignableTo` when the same generic interface appears in two
+  // namespaces (the type-parameter symbols differ across namespaces even
+  // when the declarations are structurally equivalent — same root cause
+  // as `declarationsTextEqual` above).
+  //
+  // When the structural diff shows *only* additions of optional
+  // properties, the relationship is definitionally a non-breaking
+  // widening: every old value still satisfies the new shape (the new
+  // optional fields can be absent), and every new value still satisfies
+  // the old shape (the extra fields are excess and allowed). Trust the
+  // structural evidence over the checker's verdict.
+  if (differences.length > 0 && differences.every(isPurelyOptionalAddition)) {
+    changes.push({
+      kind: "type-changed",
+      severity: "info",
+      name,
+      message: `Type of \`${name}\` was widened with new optional members; existing consumers and producers remain compatible`,
+      details: detailsBase,
+    });
+    return;
+  }
+
+  if (!newAssignableToOld && (space === "value" || !oldAssignableToNew)) {
+    // Genuinely incompatible:
+    //  - value space: any new-assignability failure breaks call sites.
+    //  - type space: failing in *both* directions means the shapes are
+    //    unrelated — neither readers nor constructors can adapt.
     changes.push({
       kind: "type-incompatible",
       severity: "breaking",
       name,
       message:
         space === "value"
-          ? `Export \`${name}\` has an incompatible type (new value not assignable to old type)`
-          : `Type \`${name}\` is no longer a supertype of its previous shape`,
-      details: { oldType: oldStr, newType: newStr },
+          ? `Export \`${name}\` has an incompatible type: the new declaration is no longer assignable to the old`
+          : `Type \`${name}\` shape diverged in both directions; old and new are no longer assignment-compatible.`,
+      details: detailsBase,
     });
-  } else if (space === "type" && !oldAssignableToNew) {
-    // Type-space narrowing: consumers who *construct* values typed against the
-    // old declaration may no longer satisfy the new (stricter) shape.
+  } else if (space === "type" && !newAssignableToOld) {
+    // One-directional type-space mismatch: the new declaration is no
+    // longer a subtype of the old. Only consumers who *read* values of
+    // this type are affected; producers are fine.
     changes.push({
       kind: "type-incompatible",
-      severity: "breaking",
+      severity: "warning",
       name,
-      message: `Type \`${name}\` was narrowed; values matching the previous type may no longer be accepted`,
-      details: { oldType: oldStr, newType: newStr },
+      message: `Type \`${name}\` shape diverged; the new declaration is no longer a subtype of the old. Consumers that read values of \`${name}\` may break.`,
+      details: detailsBase,
+    });
+  } else if (space === "type" && !oldAssignableToNew) {
+    // One-directional type-space narrowing: only consumers who
+    // *construct* values typed against the old declaration are affected.
+    changes.push({
+      kind: "type-incompatible",
+      severity: "warning",
+      name,
+      message: `Type \`${name}\` was narrowed; values that satisfied the old declaration may no longer satisfy the new one. Consumers that construct values of \`${name}\` may break.`,
+      details: detailsBase,
     });
   } else {
     changes.push({
@@ -162,9 +247,195 @@ function compareTypes(
       severity: "info",
       name,
       message: `Type of \`${name}\` changed but remains compatible`,
-      details: { oldType: oldStr, newType: newStr },
+      details: detailsBase,
     });
   }
+}
+
+function declarationText(sym: ts.Symbol, max = 1500): string | undefined {
+  const decl = sym.declarations?.[0];
+  if (!decl) return undefined;
+  // Collapse whitespace so callers (CLI, JSON consumers) can render the
+  // declaration on a few lines without leaking original indentation.
+  const text = decl.getText().replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 3)}...`;
+}
+
+/**
+ * Recognise a "bare" type reference such as `Foo`, `Foo.Bar`, or
+ * `Foo<X, Y>` (no anonymous object literal, function type, union, etc.).
+ * When both the old and new strings are bare references the human-readable
+ * diff carries no structural information and we prefer the declaration
+ * source instead.
+ */
+function isBareReference(str: string): boolean {
+  // Identifier(.Identifier)*(<...>)? — generic args may themselves contain
+  // identifiers / commas / spaces / nested generics, but no braces or
+  // parens (those would indicate a non-bare structural form).
+  return /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*(?:<[^{}()]*>)?$/.test(str);
+}
+
+/**
+ * Recognise a `summarizeStructuralDiff` line that adds a single
+ * *optional* property. Lines like `+ name?: SomeType` qualify; required
+ * additions, removals (`- ...`), changes (`~ ...`), and signature/type-
+ * parameter additions do not.
+ */
+function isPurelyOptionalAddition(line: string): boolean {
+  return /^\+ [A-Za-z_$][\w$]*\?:/.test(line);
+}
+
+/**
+ * Walk old and new types side-by-side and produce a list of bullet
+ * lines describing the *concrete* structural delta: which properties
+ * were added, removed, made optional/required, retyped, plus call /
+ * construct signature mismatches and type-parameter list changes.
+ *
+ * Returns an empty list if no useful structural delta can be produced
+ * (e.g. neither side is an object-like type). Output is intentionally
+ * line-oriented and pre-formatted for direct display.
+ */
+function summarizeStructuralDiff(
+  oldType: ts.Type,
+  newType: ts.Type,
+  checker: ts.TypeChecker,
+): string[] {
+  const out: string[] = [];
+
+  // --- Type parameters (interfaces / aliases) ---
+  const oldParams = formatTypeParameters(oldType);
+  const newParams = formatTypeParameters(newType);
+  if (oldParams !== newParams && (oldParams || newParams)) {
+    out.push(
+      `~ type parameters: ${oldParams || "<none>"} → ${newParams || "<none>"}`,
+    );
+  }
+
+  // --- Properties ---
+  const oldProps = new Map<string, ts.Symbol>();
+  const newProps = new Map<string, ts.Symbol>();
+  for (const p of oldType.getProperties()) oldProps.set(p.name, p);
+  for (const p of newType.getProperties()) newProps.set(p.name, p);
+
+  const allNames = new Set<string>([...oldProps.keys(), ...newProps.keys()]);
+  for (const propName of allNames) {
+    const oldP = oldProps.get(propName);
+    const newP = newProps.get(propName);
+    if (oldP && !newP) {
+      const t = propTypeString(oldP, checker);
+      out.push(`- ${propName}${optMark(oldP)}: ${t}`);
+      continue;
+    }
+    if (!oldP && newP) {
+      const t = propTypeString(newP, checker);
+      out.push(`+ ${propName}${optMark(newP)}: ${t}`);
+      continue;
+    }
+    if (oldP && newP) {
+      const oldOpt = isOptional(oldP);
+      const newOpt = isOptional(newP);
+      const oldT = propTypeString(oldP, checker);
+      const newT = propTypeString(newP, checker);
+      if (oldT === newT && oldOpt === newOpt) continue;
+      const optChange =
+        oldOpt !== newOpt
+          ? oldOpt
+            ? " (now required)"
+            : " (now optional)"
+          : "";
+      if (oldT === newT) {
+        out.push(`~ ${propName}${optChange}`);
+      } else {
+        out.push(`~ ${propName}${optChange}: ${oldT} → ${newT}`);
+      }
+    }
+  }
+
+  // --- Call / construct signatures ---
+  appendSignatureDiff(
+    "call signature",
+    oldType.getCallSignatures(),
+    newType.getCallSignatures(),
+    checker,
+    out,
+  );
+  appendSignatureDiff(
+    "construct signature",
+    oldType.getConstructSignatures(),
+    newType.getConstructSignatures(),
+    checker,
+    out,
+  );
+
+  // Cap to keep CLI/JSON output bounded; surfaces cluster of changes
+  // first which is what consumers actually need.
+  const MAX = 30;
+  if (out.length > MAX) {
+    return [...out.slice(0, MAX), `… (${out.length - MAX} more)`];
+  }
+  return out;
+}
+
+function appendSignatureDiff(
+  label: string,
+  oldSigs: readonly ts.Signature[],
+  newSigs: readonly ts.Signature[],
+  checker: ts.TypeChecker,
+  out: string[],
+): void {
+  if (oldSigs.length === 0 && newSigs.length === 0) return;
+  const oldStrs = oldSigs.map((s) => signatureToString(checker, s)).sort();
+  const newStrs = newSigs.map((s) => signatureToString(checker, s)).sort();
+  const oldSet = new Set(oldStrs);
+  const newSet = new Set(newStrs);
+  for (const s of oldStrs) if (!newSet.has(s)) out.push(`- ${label}: ${s}`);
+  for (const s of newStrs) if (!oldSet.has(s)) out.push(`+ ${label}: ${s}`);
+}
+
+function signatureToString(checker: ts.TypeChecker, sig: ts.Signature): string {
+  return checker
+    .signatureToString(
+      sig,
+      undefined,
+      ts.TypeFormatFlags.WriteArrayAsGenericType,
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function propTypeString(prop: ts.Symbol, checker: ts.TypeChecker): string {
+  const decl = prop.valueDeclaration ?? prop.declarations?.[0];
+  if (!decl) return "?";
+  const t = checker.getTypeOfSymbolAtLocation(prop, decl);
+  return typeToString(checker, t);
+}
+
+function isOptional(prop: ts.Symbol): boolean {
+  return (prop.flags & ts.SymbolFlags.Optional) !== 0;
+}
+
+function optMark(prop: ts.Symbol): string {
+  return isOptional(prop) ? "?" : "";
+}
+
+function formatTypeParameters(type: ts.Type): string {
+  // Generic interfaces/aliases expose type parameters via the
+  // associated symbol's declarations; the structural Type API does
+  // not. Walk declarations of the symbol if present.
+  const sym = type.aliasSymbol ?? type.getSymbol();
+  if (!sym?.declarations) return "";
+  for (const decl of sym.declarations) {
+    const params = (
+      decl as ts.NamedDeclaration & {
+        typeParameters?: ts.NodeArray<ts.TypeParameterDeclaration>;
+      }
+    ).typeParameters;
+    if (params?.length) {
+      return `<${params.map((p) => p.getText()).join(", ")}>`;
+    }
+  }
+  return "";
 }
 
 function typeOfSymbol(
@@ -233,12 +504,17 @@ function kindChangeBreaking(oldKind: string, newKind: string): boolean {
 
 function summarize(changes: Change[]): DiffResult {
   let breakingCount = 0;
-  let nonBreakingCount = 0;
+  let warningCount = 0;
   let infoCount = 0;
   for (const c of changes) {
     if (c.severity === "breaking") breakingCount++;
-    else if (c.severity === "non-breaking") nonBreakingCount++;
+    else if (c.severity === "warning") warningCount++;
     else infoCount++;
   }
-  return { changes, breakingCount, nonBreakingCount, infoCount };
+  return {
+    changes,
+    breakingCount,
+    warningCount,
+    infoCount,
+  };
 }

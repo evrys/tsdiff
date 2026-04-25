@@ -15,9 +15,15 @@ types entry.
 
 Options:
   --format <human|json>   Output format (default: human)
+  --strict                Also exit non-zero on potentially-breaking warnings
   --no-exit-code          Do not exit with a non-zero status on breaking changes
   -h, --help              Show this help
   -v, --version           Show version
+
+Exit codes:
+  0   no breaking changes (warnings allowed unless --strict)
+  1   breaking changes detected (or warnings, with --strict)
+  2   invalid usage
 
 Examples:
   tsdiff old.d.ts new.d.ts
@@ -33,6 +39,7 @@ async function main(argv: string[]): Promise<number> {
       allowPositionals: true,
       options: {
         format: { type: "string", default: "human" },
+        strict: { type: "boolean", default: false },
         "no-exit-code": { type: "boolean", default: false },
         help: { type: "boolean", short: "h", default: false },
         version: { type: "boolean", short: "v", default: false },
@@ -102,7 +109,9 @@ async function main(argv: string[]): Promise<number> {
     process.stdout.write(`${formatHuman(result)}\n`);
   }
 
-  if (result.breakingCount > 0 && !values["no-exit-code"]) return 1;
+  if (values["no-exit-code"]) return 0;
+  if (result.breakingCount > 0) return 1;
+  if (values.strict && result.warningCount > 0) return 1;
   return 0;
 }
 

@@ -1,4 +1,5 @@
 {
-  "description": "required -> optional is breaking for consumers (the field may now be missing)",
-  "breakingCountAtLeast": 1
+  "description": "required -> optional is a potential break (warning) — consumers reading the field may now see undefined",
+  "breakingCount": 0,
+  "warningCountAtLeast": 1
 }

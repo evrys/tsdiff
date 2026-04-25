@@ -8,7 +8,8 @@ interface Expected {
   description?: string;
   breakingCount?: number;
   breakingCountAtLeast?: number;
-  nonBreakingCount?: number;
+  warningCount?: number;
+  warningCountAtLeast?: number;
   infoCount?: number;
   changes?: Array<{
     kind?: string;
@@ -47,9 +48,12 @@ describe("diffDeclarations (fixtures)", () => {
           expected.breakingCountAtLeast,
         );
       }
-      if (expected.nonBreakingCount !== undefined) {
-        expect(result.nonBreakingCount, "nonBreakingCount").toBe(
-          expected.nonBreakingCount,
+      if (expected.warningCount !== undefined) {
+        expect(result.warningCount, "warningCount").toBe(expected.warningCount);
+      }
+      if (expected.warningCountAtLeast !== undefined) {
+        expect(result.warningCount, "warningCount").toBeGreaterThanOrEqual(
+          expected.warningCountAtLeast,
         );
       }
       if (expected.infoCount !== undefined) {

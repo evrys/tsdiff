@@ -1,4 +1,5 @@
 {
-  "description": "narrowing a type alias is breaking for producers (existing consumers' values may no longer fit)",
-  "breakingCountAtLeast": 1
+  "description": "narrowing a type alias is a potential break (warning) — only consumers who construct values of the type are affected",
+  "breakingCount": 0,
+  "warningCountAtLeast": 1
 }
