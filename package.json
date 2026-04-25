@@ -1,6 +1,6 @@
 {
-  "name": "tsdiff",
-  "version": "0.1.0",
+  "name": "@evrys/tsdiff",
+  "version": "0.0.1",
   "description": "Detect breaking changes in a TypeScript package's public API surface",
   "license": "MIT",
   "type": "module",

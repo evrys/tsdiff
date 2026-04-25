@@ -50,7 +50,7 @@ async function main(argv: string[]): Promise<number> {
     return 0;
   }
   if (values.version) {
-    process.stdout.write("tsdiff 0.1.0\n");
+    process.stdout.write("tsdiff 0.0.1\n");
     return 0;
   }
   if (positionals.length !== 2) {
