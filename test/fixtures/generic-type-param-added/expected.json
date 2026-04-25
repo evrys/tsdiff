@@ -1,0 +1,4 @@
+{
+  "description": "adding an unused generic type-parameter (KNOWN LIMITATION: TS considers extra generic params structurally compatible)",
+  "breakingCount": 0
+}

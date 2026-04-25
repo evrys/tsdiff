@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": false,
-    "includes": ["**", "!dist"]
+    "includes": ["**", "!dist", "!test/fixtures"]
   },
   "formatter": {
     "enabled": true,

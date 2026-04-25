@@ -1,0 +1,5 @@
+{
+  "description": "identical readonly field — sanity check that readonly modifier is preserved",
+  "breakingCount": 0,
+  "changes": []
+}

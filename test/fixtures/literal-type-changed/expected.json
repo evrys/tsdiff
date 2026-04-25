@@ -1,0 +1,5 @@
+{
+  "description": "changing a literal type is breaking",
+  "breakingCountAtLeast": 1,
+  "changes": [{ "kind": "type-incompatible", "name": "PI" }]
+}

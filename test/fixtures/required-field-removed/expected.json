@@ -1,0 +1,4 @@
+{
+  "description": "removing a field is breaking for consumers reading it",
+  "breakingCountAtLeast": 1
+}

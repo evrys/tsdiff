@@ -1,0 +1,5 @@
+{
+  "description": "interface -> type-alias of identical shape is informational, not breaking",
+  "breakingCount": 0,
+  "changes": [{ "kind": "kind-changed", "severity": "info", "name": "Box" }]
+}

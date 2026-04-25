@@ -1,0 +1,4 @@
+{
+  "description": "narrowing a type alias is breaking for producers (existing consumers' values may no longer fit)",
+  "breakingCountAtLeast": 1
+}

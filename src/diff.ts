@@ -105,6 +105,12 @@ function compareTypes(
   const oldStr = typeToString(checker, oldType);
   const newStr = typeToString(checker, newType);
 
+  // Fast path: identical printed forms mean structurally identical types.
+  // This is also needed for generic declarations, where `isTypeAssignableTo`
+  // can fail across two programs because the two declarations have distinct
+  // type-parameter symbols even when the source is byte-for-byte identical.
+  if (oldStr === newStr) return;
+
   // For consumer compatibility: every value the new package produces of this
   // type must be acceptable wherever the old type was expected.
   // Equivalently: new must be assignable to old.
@@ -112,9 +118,6 @@ function compareTypes(
   // For type-space declarations (interfaces, aliases), consumers may both
   // construct and consume values of the type, so we also need the reverse.
   const oldAssignableToNew = isAssignable(checker, oldType, newType);
-
-  // Equivalent types in both directions and identical printed form: no change.
-  if (newAssignableToOld && oldAssignableToNew && oldStr === newStr) return;
 
   if (!newAssignableToOld) {
     changes.push({
@@ -173,24 +176,63 @@ function typeToString(checker: ts.TypeChecker, type: ts.Type): string {
     ts.TypeFormatFlags.NoTruncation |
     ts.TypeFormatFlags.WriteArrayAsGenericType |
     ts.TypeFormatFlags.InTypeAlias;
-  const named = checker.typeToString(type, undefined, flags);
-  // For object/interface types the named form often collapses to the
-  // declaration's own name (e.g. "User"), which hides the diff. Expand
-  // one level into a structural form when possible.
-  const props = checker.getPropertiesOfType(type);
-  if (props.length === 0) return named;
-  const members = props
-    .map((prop) => {
-      const decl = prop.valueDeclaration ?? prop.declarations?.[0];
-      const propType = decl
-        ? checker.getTypeOfSymbolAtLocation(prop, decl)
-        : checker.getDeclaredTypeOfSymbol(prop);
-      const optional = (prop.flags & ts.SymbolFlags.Optional) !== 0 ? "?" : "";
-      const propStr = checker.typeToString(propType, undefined, flags);
-      return `${prop.name}${optional}: ${propStr}`;
-    })
-    .join("; ");
-  return `{ ${members} }`;
+
+  // For non-object types (primitives, literals, unions, intersections, type
+  // parameters, etc.) the named printed form already conveys the full shape.
+  if (!isObjectType(type)) {
+    return checker.typeToString(type, undefined, flags);
+  }
+
+  // For object types the named form often collapses to a single declaration
+  // name (e.g. "User" or "typeof Foo"), which would hide diffs. Build a
+  // structural fingerprint covering properties, call/construct signatures
+  // and index signatures.
+  const parts: string[] = [];
+  for (const prop of checker.getPropertiesOfType(type)) {
+    const decl = prop.valueDeclaration ?? prop.declarations?.[0];
+    const propType = decl
+      ? checker.getTypeOfSymbolAtLocation(prop, decl)
+      : checker.getDeclaredTypeOfSymbol(prop);
+    const optional = (prop.flags & ts.SymbolFlags.Optional) !== 0 ? "?" : "";
+    const readonly = isReadonlyProperty(prop) ? "readonly " : "";
+    const propStr = checker.typeToString(propType, undefined, flags);
+    parts.push(`${readonly}${prop.name}${optional}: ${propStr}`);
+  }
+  for (const sig of checker.getSignaturesOfType(type, ts.SignatureKind.Call)) {
+    parts.push(`call ${checker.signatureToString(sig)}`);
+  }
+  for (const sig of checker.getSignaturesOfType(
+    type,
+    ts.SignatureKind.Construct,
+  )) {
+    parts.push(`new ${checker.signatureToString(sig)}`);
+  }
+  const stringIndex = checker.getIndexInfoOfType(type, ts.IndexKind.String);
+  if (stringIndex) {
+    parts.push(
+      `[k: string]: ${checker.typeToString(stringIndex.type, undefined, flags)}`,
+    );
+  }
+  const numberIndex = checker.getIndexInfoOfType(type, ts.IndexKind.Number);
+  if (numberIndex) {
+    parts.push(
+      `[k: number]: ${checker.typeToString(numberIndex.type, undefined, flags)}`,
+    );
+  }
+  return `{ ${parts.join("; ")} }`;
+}
+
+function isObjectType(type: ts.Type): boolean {
+  return (type.flags & ts.TypeFlags.Object) !== 0;
+}
+
+function isReadonlyProperty(prop: ts.Symbol): boolean {
+  for (const decl of prop.declarations ?? []) {
+    const mods = ts.canHaveModifiers(decl) ? ts.getModifiers(decl) : undefined;
+    if (mods?.some((m) => m.kind === ts.SyntaxKind.ReadonlyKeyword))
+      return true;
+  }
+  return false;
 }
 
 function isAssignable(

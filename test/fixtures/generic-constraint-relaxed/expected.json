@@ -1,0 +1,4 @@
+{
+  "description": "relaxing a generic constraint is non-breaking (existing callers still satisfy it)",
+  "breakingCount": 0
+}

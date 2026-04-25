@@ -1,0 +1,5 @@
+{
+  "description": "adding a generic type-parameter constraint is breaking (callers using non-string T are rejected)",
+  "breakingCountAtLeast": 1,
+  "changes": [{ "kind": "type-incompatible", "name": "identity" }]
+}

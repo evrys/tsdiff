@@ -1,0 +1,4 @@
+{
+  "description": "adding an enum member widens the union: new values can flow to consumers expecting only the old ones",
+  "breakingCountAtLeast": 1
+}

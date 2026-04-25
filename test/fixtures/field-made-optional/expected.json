@@ -1,0 +1,4 @@
+{
+  "description": "required -> optional is breaking for consumers (the field may now be missing)",
+  "breakingCountAtLeast": 1
+}

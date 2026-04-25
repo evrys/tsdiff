@@ -1,0 +1,6 @@
+{
+  "description": "writable -> readonly is detected as informational (TS treats readonly bivariantly so it isn't reported as breaking)",
+  "breakingCount": 0,
+  "infoCount": 1,
+  "changes": [{ "kind": "type-changed", "name": "User" }]
+}

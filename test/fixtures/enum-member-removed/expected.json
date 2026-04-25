@@ -1,0 +1,4 @@
+{
+  "description": "removing an enum member is breaking",
+  "breakingCountAtLeast": 1
+}

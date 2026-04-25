@@ -1,0 +1,5 @@
+{
+  "description": "widening a type alias is breaking for consumers (callers receiving the type now get more variants)",
+  "breakingCountAtLeast": 1,
+  "changes": [{ "kind": "type-incompatible", "name": "Id" }]
+}

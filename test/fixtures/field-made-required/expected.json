@@ -1,0 +1,4 @@
+{
+  "description": "optional -> required is breaking for producers (existing producers may omit the field)",
+  "breakingCountAtLeast": 1
+}

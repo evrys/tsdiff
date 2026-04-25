@@ -1,0 +1,5 @@
+{
+  "description": "removing a function overload is breaking",
+  "breakingCountAtLeast": 1,
+  "changes": [{ "kind": "type-incompatible", "name": "format" }]
+}
