@@ -75,6 +75,15 @@ function compareEntry(
     });
   }
 
+  // Cheap structural equality: identical declaration source text means
+  // identical type semantics. This is also needed for generic declarations
+  // where `isTypeAssignableTo` can return false across two namespaces with
+  // distinct type-parameter symbols even when the source is byte-for-byte
+  // identical. Doing this comparison once at the symbol level avoids the
+  // O(properties × type-string) blowup of structural fingerprinting on
+  // self-referential builder APIs (zod, mui, ...).
+  if (declarationsTextEqual(oldEntry.symbol, newEntry.symbol)) return;
+
   // Compare value-space types (functions, classes, variables, enums).
   if (isValueKind(oldEntry.kind) && isValueKind(newEntry.kind)) {
     const oldType = typeOfSymbol(oldEntry.symbol, checker);
@@ -94,6 +103,19 @@ function compareEntry(
   }
 }
 
+function declarationsTextEqual(a: ts.Symbol, b: ts.Symbol): boolean {
+  const aDecls = a.declarations ?? [];
+  const bDecls = b.declarations ?? [];
+  if (aDecls.length === 0 || aDecls.length !== bDecls.length) return false;
+  // Sort to make overload order irrelevant.
+  const aTexts = aDecls.map((d) => d.getText()).sort();
+  const bTexts = bDecls.map((d) => d.getText()).sort();
+  for (let i = 0; i < aTexts.length; i++) {
+    if (aTexts[i] !== bTexts[i]) return false;
+  }
+  return true;
+}
+
 function compareTypes(
   name: string,
   oldType: ts.Type,
@@ -102,14 +124,12 @@ function compareTypes(
   changes: Change[],
   space: "value" | "type",
 ): void {
+  // Equality of these two types is established at the symbol level by
+  // `declarationsTextEqual` in the caller, so by the time we get here the
+  // types differ in source. The strings below are for human-readable
+  // change messages; the actual diff is decided by `isTypeAssignableTo`.
   const oldStr = typeToString(checker, oldType);
   const newStr = typeToString(checker, newType);
-
-  // Fast path: identical printed forms mean structurally identical types.
-  // This is also needed for generic declarations, where `isTypeAssignableTo`
-  // can fail across two programs because the two declarations have distinct
-  // type-parameter symbols even when the source is byte-for-byte identical.
-  if (oldStr === newStr) return;
 
   // For consumer compatibility: every value the new package produces of this
   // type must be acceptable wherever the old type was expected.
@@ -172,67 +192,14 @@ function declaredTypeOfSymbol(
 }
 
 function typeToString(checker: ts.TypeChecker, type: ts.Type): string {
+  // Plain TypeChecker formatting. Default truncation keeps the output
+  // bounded; full structural detail is intentionally omitted because
+  // (a) the actual diff decision is made by `isTypeAssignableTo`, and
+  // (b) on self-referential builder APIs (e.g. zod's `ZodType<...>`)
+  // structural expansion grows quadratically and OOMs the heap.
   const flags =
-    ts.TypeFormatFlags.NoTruncation |
-    ts.TypeFormatFlags.WriteArrayAsGenericType |
-    ts.TypeFormatFlags.InTypeAlias;
-
-  // For non-object types (primitives, literals, unions, intersections, type
-  // parameters, etc.) the named printed form already conveys the full shape.
-  if (!isObjectType(type)) {
-    return checker.typeToString(type, undefined, flags);
-  }
-
-  // For object types the named form often collapses to a single declaration
-  // name (e.g. "User" or "typeof Foo"), which would hide diffs. Build a
-  // structural fingerprint covering properties, call/construct signatures
-  // and index signatures.
-  const parts: string[] = [];
-  for (const prop of checker.getPropertiesOfType(type)) {
-    const decl = prop.valueDeclaration ?? prop.declarations?.[0];
-    const propType = decl
-      ? checker.getTypeOfSymbolAtLocation(prop, decl)
-      : checker.getDeclaredTypeOfSymbol(prop);
-    const optional = (prop.flags & ts.SymbolFlags.Optional) !== 0 ? "?" : "";
-    const readonly = isReadonlyProperty(prop) ? "readonly " : "";
-    const propStr = checker.typeToString(propType, undefined, flags);
-    parts.push(`${readonly}${prop.name}${optional}: ${propStr}`);
-  }
-  for (const sig of checker.getSignaturesOfType(type, ts.SignatureKind.Call)) {
-    parts.push(`call ${checker.signatureToString(sig)}`);
-  }
-  for (const sig of checker.getSignaturesOfType(
-    type,
-    ts.SignatureKind.Construct,
-  )) {
-    parts.push(`new ${checker.signatureToString(sig)}`);
-  }
-  const stringIndex = checker.getIndexInfoOfType(type, ts.IndexKind.String);
-  if (stringIndex) {
-    parts.push(
-      `[k: string]: ${checker.typeToString(stringIndex.type, undefined, flags)}`,
-    );
-  }
-  const numberIndex = checker.getIndexInfoOfType(type, ts.IndexKind.Number);
-  if (numberIndex) {
-    parts.push(
-      `[k: number]: ${checker.typeToString(numberIndex.type, undefined, flags)}`,
-    );
-  }
-  return `{ ${parts.join("; ")} }`;
-}
-
-function isObjectType(type: ts.Type): boolean {
-  return (type.flags & ts.TypeFlags.Object) !== 0;
-}
-
-function isReadonlyProperty(prop: ts.Symbol): boolean {
-  for (const decl of prop.declarations ?? []) {
-    const mods = ts.canHaveModifiers(decl) ? ts.getModifiers(decl) : undefined;
-    if (mods?.some((m) => m.kind === ts.SyntaxKind.ReadonlyKeyword))
-      return true;
-  }
-  return false;
+    ts.TypeFormatFlags.WriteArrayAsGenericType | ts.TypeFormatFlags.InTypeAlias;
+  return checker.typeToString(type, undefined, flags);
 }
 
 function isAssignable(
