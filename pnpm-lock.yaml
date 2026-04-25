@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@typescript/ata':
+        specifier: ^0.9.8
+        version: 0.9.8(typescript@5.9.3)
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
@@ -527,6 +530,11 @@ packages:
 
   '@types/node@22.19.17':
     resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
+
+  '@typescript/ata@0.9.8':
+    resolution: {integrity: sha512-+M815CeDRJS5H5ciWfhFCKp25nNfF+LFWawWAaBhNlquFb2wS5IIMDI+2bKWN3GuU6mpj+FzySsOD29M4nG8Xg==}
+    peerDependencies:
+      typescript: '>=4.4.4'
 
   '@vitest/expect@2.1.9':
     resolution: {integrity: sha512-UJCIkTBenHeKT1TTlKMJWy1laZewsRIzYighyYiJKZreqtdxSos/S1t+ktRMQWu2CKqaarrkeszJx1cgC5tGZw==}
@@ -1209,6 +1217,10 @@ snapshots:
   '@types/node@22.19.17':
     dependencies:
       undici-types: 6.21.0
+
+  '@typescript/ata@0.9.8(typescript@5.9.3)':
+    dependencies:
+      typescript: 5.9.3
 
   '@vitest/expect@2.1.9':
     dependencies:
